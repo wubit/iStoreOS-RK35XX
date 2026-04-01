@@ -69,5 +69,8 @@ git clone --depth=1 -b main https://github.com/xiaomeng9597/istoreos-settings pa
 git clone --depth=1 https://github.com/sirpdboy/luci-app-eqosplus package/luci-app-eqosplus
 
 
+# 修复LuCI网络接口页面 CBIAbstractValue 报错（form.RichListValue不存在于22.03）
+sed -i "s/form\.RichListValue/cbiRichListValue/g" feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/interfaces.js
+
 # 复制dts设备树文件到指定目录下
 cp -a $GITHUB_WORKSPACE/configfiles/dts/rk356x/* target/linux/rockchip/dts/rk3568/
