@@ -1,0 +1,27 @@
+#!/bin/sh
+# Custom network defaults for OrangePi 5 Plus
+# Runs once on first boot
+
+# Ensure LAN has correct IP
+uci set network.lan.proto='static'
+uci set network.lan.ipaddr='192.168.100.1'
+uci set network.lan.netmask='255.255.255.0'
+uci commit network
+
+# Enable DHCP on LAN
+uci set dhcp.lan.dhcpv4='server'
+uci delete dhcp.lan.ignore 2>/dev/null
+uci set dhcp.lan.start='100'
+uci set dhcp.lan.limit='150'
+uci set dhcp.lan.leasetime='12h'
+uci commit dhcp
+/etc/init.d/dnsmasq restart
+
+# Replace opkg sources with Alibaba mirrors
+if [ -f /etc/opkg/distfeeds.conf ]; then
+    sed -i 's|https\?://downloads.openwrt.org|https://mirrors.aliyun.com/openwrt|g' /etc/opkg/distfeeds.conf
+    sed -i 's|https\?://mirrors.cernet.edu.cn/openwrt|https://mirrors.aliyun.com/openwrt|g' /etc/opkg/distfeeds.conf
+    sed -i 's|https\?://mirror2.openwrt.org|https://mirrors.aliyun.com/openwrt|g' /etc/opkg/distfeeds.conf
+fi
+
+exit 0
