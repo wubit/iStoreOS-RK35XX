@@ -74,3 +74,67 @@ sed -i "s/form\.RichListValue/cbiRichListValue/g" feeds/luci/modules/luci-mod-ne
 
 # 复制dts设备树文件到指定目录下
 cp -a $GITHUB_WORKSPACE/configfiles/dts/rk356x/* target/linux/rockchip/dts/rk3568/
+
+
+# ==================== OrangePi 5 Plus 定制 ====================
+
+# 1. 替换DTB：用Debian官方提取的DTB替换编译生成的DTB（解决无法启动问题）
+# 将自定义DTB复制到构建根目录
+cp -f $GITHUB_WORKSPACE/configfiles/rk3588-orangepi-5-plus.dtb custom-opi5plus.dtb
+
+# 修改镜像Makefile：在boot-common中DTB复制后，追加一行覆盖OPi 5 Plus的DTB
+python3 << 'PYEOF'
+import sys
+mf = 'target/linux/rockchip/image/Makefile'
+with open(mf) as f:
+    lines = f.readlines()
+new_lines = []
+target_line = '$(CP) $(KDIR)/image-$(firstword $(DEVICE_DTS)).dtb $@.boot/rockchip.dtb'
+added = False
+for line in lines:
+    new_lines.append(line)
+    if not added and target_line in line:
+        indent = line[:len(line) - len(line.lstrip())]
+        new_lines.append(indent + '[ "$(firstword $(DEVICE_DTS))" = "rk3588-orangepi-5-plus" ] && [ -f $(TOPDIR)/custom-opi5plus.dtb ] && $(CP) $(TOPDIR)/custom-opi5plus.dtb $@.boot/rockchip.dtb || true\n')
+        added = True
+with open(mf, 'w') as f:
+    f.writelines(new_lines)
+if added:
+    print("OK: DTB override line added to Makefile")
+else:
+    print("WARNING: target line not found in Makefile", file=sys.stderr)
+PYEOF
+
+# 2. 网络配置：eth0=LAN(192.168.100.1), eth1=WAN(DHCP)
+# 修改02_network：为OPi 5 Plus创建独立case条目（原始配置eth1=LAN,eth0=WAN需要互换）
+python3 << 'PYEOF'
+import re
+nf = 'target/linux/rockchip/rk35xx/base-files/etc/board.d/02_network'
+with open(nf) as f:
+    content = f.read()
+
+# Check if orangepi-5-plus is in a multi-board pattern (e.g. "board1|\nboard2)")
+# or a standalone pattern
+if 'xunlong,orangepi-5-plus|' in content:
+    # Remove from grouped pattern and add separate entry before it
+    content = content.replace('xunlong,orangepi-5-plus|\n', '')
+    content = content.replace('xunlong,orangepi-5-plus|\r\n', '')
+    # Find the case block and add OPi 5 Plus as separate entry before it
+    insert = "xunlong,orangepi-5-plus)\n\tucidef_set_interfaces_lan_wan 'eth0' 'eth1'\n\t;;\n"
+    # Insert before the first board pattern in the case statement
+    content = content.replace("case \"$board\" in\n", "case \"$board\" in\n" + insert, 1)
+elif 'xunlong,orangepi-5-plus)' in content:
+    # Standalone entry - just swap the arguments
+    content = re.sub(
+        r"(xunlong,orangepi-5-plus\).*?\n\s*)ucidef_set_interfaces_lan_wan\s+'eth1'\s+'eth0'",
+        r"\1ucidef_set_interfaces_lan_wan 'eth0' 'eth1'",
+        content
+    )
+
+with open(nf, 'w') as f:
+    f.write(content)
+print("OK: 02_network updated for OPi 5 Plus (eth0=LAN, eth1=WAN)")
+PYEOF
+
+# 3. 确保uci-defaults脚本有执行权限（DHCP、opkg源等在99-custom-network中设置）
+chmod 755 package/base-files/files/etc/uci-defaults/99-custom-network 2>/dev/null
